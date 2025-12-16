@@ -4,12 +4,16 @@ Handles OAuth authentication and file operations with Google Drive API
 """
 import os
 import io
+import json
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import pickle
+
+# Allow insecure transport for local development (HTTP instead of HTTPS)
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 # Scopes for Google Drive API
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
@@ -18,17 +22,24 @@ SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 class GoogleDriveClient:
     """Client for interacting with Google Drive API"""
     
-    def __init__(self):
-        """Initialize the Google Drive client with authentication"""
-        self.credentials = None
+    def __init__(self, credentials=None):
+        """
+        Initialize the Google Drive client with authentication
+        
+        Args:
+            credentials: Optional pre-authenticated credentials object
+        """
+        self.credentials = credentials
         self.service = None
-        self._authenticate()
+        if credentials:
+            self.service = build('drive', 'v3', credentials=credentials)
+        else:
+            self._authenticate()
     
     def _authenticate(self):
-        """Handle OAuth 2.0 authentication flow"""
+        """Handle OAuth 2.0 authentication flow using environment variables"""
         creds = None
         token_path = os.getenv('GOOGLE_DRIVE_TOKEN_PATH', 'token.pickle')
-        credentials_path = os.getenv('GOOGLE_DRIVE_CREDENTIALS_PATH', 'credentials.json')
         
         # Load saved credentials if available
         if os.path.exists(token_path):
@@ -39,23 +50,98 @@ class GoogleDriveClient:
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
+                # Save refreshed credentials
+                with open(token_path, 'wb') as token:
+                    pickle.dump(creds, token)
             else:
-                if not os.path.exists(credentials_path):
-                    raise FileNotFoundError(
-                        f"Google Drive credentials file not found at {credentials_path}. "
-                        "Please download it from Google Cloud Console."
-                    )
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    credentials_path, SCOPES
+                # Need to initiate OAuth flow
+                raise Exception(
+                    "No valid credentials found. Please authenticate via the web interface first."
                 )
-                creds = flow.run_local_server(port=0)
-            
-            # Save credentials for future use
-            with open(token_path, 'wb') as token:
-                pickle.dump(creds, token)
         
         self.credentials = creds
         self.service = build('drive', 'v3', credentials=creds)
+    
+    @staticmethod
+    def create_oauth_flow(redirect_uri=None):
+        """
+        Create OAuth2 flow for authentication
+        
+        Args:
+            redirect_uri: Optional redirect URI (defaults to env variable)
+            
+        Returns:
+            Flow object for OAuth authentication
+        """
+        client_id = os.getenv('GOOGLE_CLIENT_ID')
+        client_secret = os.getenv('GOOGLE_CLIENT_SECRET')
+        redirect_uri = redirect_uri or os.getenv('GOOGLE_REDIRECT_URI')
+        
+        if not all([client_id, client_secret, redirect_uri]):
+            raise ValueError(
+                "Missing OAuth credentials. Please set GOOGLE_CLIENT_ID, "
+                "GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URI in environment."
+            )
+        
+        client_config = {
+            "web": {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "redirect_uris": [redirect_uri]
+            }
+        }
+        
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=SCOPES,
+            redirect_uri=redirect_uri
+        )
+        
+        return flow
+    
+    @staticmethod
+    def get_authorization_url():
+        """
+        Get the authorization URL for OAuth flow
+        
+        Returns:
+            tuple: (authorization_url, state)
+        """
+        flow = GoogleDriveClient.create_oauth_flow()
+        authorization_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent'
+        )
+        return authorization_url, state
+    
+    @staticmethod
+    def handle_oauth_callback(authorization_response, state=None):
+        """
+        Handle OAuth callback and exchange code for credentials
+        
+        Args:
+            authorization_response: Full callback URL with code
+            state: Optional state parameter for validation
+            
+        Returns:
+            Credentials object
+        """
+        flow = GoogleDriveClient.create_oauth_flow()
+        if state:
+            flow.state = state
+        
+        flow.fetch_token(authorization_response=authorization_response)
+        creds = flow.credentials
+        
+        # Save credentials for future use
+        token_path = os.getenv('GOOGLE_DRIVE_TOKEN_PATH', 'token.pickle')
+        with open(token_path, 'wb') as token:
+            pickle.dump(creds, token)
+        
+        return creds
     
     def list_files_in_folder(self, folder_id: str, file_types: list = None):
         """

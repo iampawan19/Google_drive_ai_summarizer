@@ -2,21 +2,78 @@
 Dashboard Views
 Handles UI rendering and communication with FastAPI service
 """
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
 from django.conf import settings
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
 import requests
 import csv
 import json
+import os
 from io import StringIO
+import sys
+
+# Add ai_service to path
+sys.path.append(os.path.join(settings.BASE_DIR, 'ai_service'))
+from ai_service.drive_client import GoogleDriveClient
 
 
 def index(request):
     """Render main dashboard page"""
-    return render(request, 'dashboard/index.html')
+    # Check if user is authenticated with Google
+    is_authenticated = os.path.exists(os.getenv('GOOGLE_DRIVE_TOKEN_PATH', 'token.pickle'))
+    context = {
+        'is_authenticated': is_authenticated,
+        'folder_id': os.getenv('GOOGLE_DRIVE_FOLDER_ID', '')
+    }
+    return render(request, 'dashboard/index.html', context)
 
 
+def oauth_authorize(request):
+    """
+    Initiate Google OAuth2 authorization flow
+    Redirects user to Google consent page
+    """
+    try:
+        authorization_url, state = GoogleDriveClient.get_authorization_url()
+        # Store state in session for validation
+        request.session['oauth_state'] = state
+        return redirect(authorization_url)
+    except Exception as e:
+        return HttpResponse(f'Error initiating OAuth: {str(e)}', status=500)
+
+
+def oauth_callback(request):
+    """
+    Handle OAuth2 callback from Google
+    Exchanges authorization code for access token
+    """
+    try:
+        # Get the full callback URL
+        authorization_response = request.build_absolute_uri()
+        
+        # Get state from session for validation
+        state = request.session.get('oauth_state')
+        
+        # Exchange code for credentials
+        credentials = GoogleDriveClient.handle_oauth_callback(
+            authorization_response, 
+            state
+        )
+        
+        # Clear state from session
+        if 'oauth_state' in request.session:
+            del request.session['oauth_state']
+        
+        # Redirect to dashboard with success message
+        return redirect('/?auth=success')
+        
+    except Exception as e:
+        return HttpResponse(f'OAuth callback error: {str(e)}', status=500)
+
+
+@csrf_exempt
 @require_http_methods(["POST"])
 def summarize(request):
     """

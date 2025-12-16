@@ -90,17 +90,22 @@ cp .env.example .env
 Required environment variables:
 - `DJANGO_SECRET_KEY`: Django secret key for security
 - `OPENAI_API_KEY`: Your OpenAI API key
-- `GOOGLE_DRIVE_CREDENTIALS_PATH`: Path to your Google OAuth credentials file
+- `GOOGLE_CLIENT_ID`: Google OAuth 2.0 Client ID
+- `GOOGLE_CLIENT_SECRET`: Google OAuth 2.0 Client Secret
+- `GOOGLE_REDIRECT_URI`: OAuth callback URL (default: http://localhost:8001/oauth/callback)
+- `GOOGLE_DRIVE_FOLDER_ID`: Default folder ID (optional)
 - `FASTAPI_SERVICE_URL`: URL where FastAPI will run (default: http://127.0.0.1:8000)
 
-### 3. Set Up Google Drive API
+### 3. Set Up Google Drive API (OAuth2)
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
 3. Enable the **Google Drive API**
-4. Create **OAuth 2.0 credentials** (Desktop application type)
-5. Download the credentials file as `credentials.json`
-6. Place `credentials.json` in the project root directory
+4. Create **OAuth 2.0 credentials** (Web application type)
+5. Add authorized redirect URI: `http://localhost:8001/oauth/callback`
+6. Copy the Client ID and Client Secret to your `.env` file
+
+> **Note:** See [OAUTH_SETUP.md](OAUTH_SETUP.md) for detailed OAuth configuration guide
 
 ### 4. Get OpenAI API Key
 
@@ -120,7 +125,7 @@ You need to run both services simultaneously in separate terminals:
 
 **Terminal 1 - FastAPI Service (AI Backend):**
 ```bash
-uvicorn ai_service.main:app --reload
+python -m uvicorn ai_service.main:app --reload --port 8000
 # Runs on http://127.0.0.1:8000
 ```
 
@@ -130,7 +135,7 @@ python manage.py runserver 8001
 # Runs on http://127.0.0.1:8001
 ```
 
-> **Note:** Django runs on port 8001 to avoid conflict with FastAPI on port 8000
+> **Note:** Django runs on port 8001 (with OAuth callback) and FastAPI on port 8000
 
 ### 7. Access the Application
 
@@ -139,23 +144,35 @@ Open your browser and navigate to:
 http://127.0.0.1:8001
 ```
 
+### 8. Authenticate with Google Drive
+
+1. Click the **"Connect to Google Drive"** button
+2. Sign in with your Google account
+3. Grant permission to access Google Drive (read-only)
+4. You'll be redirected back to the dashboard
+
 The Django web interface (port 8001) will communicate with the FastAPI service (port 8000) in the background.
 
 ## 📖 How to Use
 
-1. **Get Your Folder ID**
+1. **Authenticate with Google**
+   - Click "Connect to Google Drive" on the dashboard
+   - Sign in and grant permissions
+   - The app saves your authentication for future sessions
+
+2. **Get Your Folder ID**
    - Open the Google Drive folder you want to process
    - Copy the folder ID from the URL
    - Example: `https://drive.google.com/drive/folders/1aBcDeFgHiJkLmNoPqRsTuVwXyZ`
    - Folder ID: `1aBcDeFgHiJkLmNoPqRsTuVwXyZ`
 
-2. **Process Files**
+3. **Process Files**
    - Paste the folder ID in the dashboard
    - Select file types to process (PDF, DOCX, TXT)
    - Click "Summarize Files"
    - Wait for the AI to process your documents
 
-3. **View Results**
+4. **View Results**
    - Review summaries in the interactive table
    - Check statistics (total files, successful, errors)
    - Download results as CSV for further analysis

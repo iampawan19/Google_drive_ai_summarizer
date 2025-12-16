@@ -296,13 +296,29 @@
         <div class="content">
             <div class="info-box">
                 <strong>How to use:</strong>
-                1. Get your Google Drive folder ID from the URL (e.g., https://drive.google.com/drive/folders/<strong>FOLDER_ID</strong>)<br>
-                2. Select file types you want to process<br>
-                3. Click "Summarize Files" and wait for the AI to process your documents
+                1. Authenticate with Google Drive using OAuth2<br>
+                2. Get your Google Drive folder ID from the URL (e.g., https://drive.google.com/drive/folders/<strong>FOLDER_ID</strong>)<br>
+                3. Select file types you want to process<br>
+                4. Click "Summarize Files" and wait for the AI to process your documents
             </div>
+
+            {% if not is_authenticated %}
+            <div class="form-section" style="text-align: center;">
+                <h3 style="margin-bottom: 15px; color: #333;">🔐 Authentication Required</h3>
+                <p style="margin-bottom: 20px; color: #666;">Please authenticate with Google Drive to access your files</p>
+                <a href="{% url 'dashboard:oauth_authorize' %}" class="btn btn-primary" style="text-decoration: none; display: inline-block;">
+                    🔑 Connect to Google Drive
+                </a>
+            </div>
+            {% else %}
+            <div class="form-section" style="background: #d4edda; border: 2px solid #28a745;">
+                <p style="text-align: center; color: #155724; font-weight: 600;">✅ Connected to Google Drive</p>
+            </div>
+            {% endif %}
             
             <div class="form-section">
                 <form id="summarizeForm">
+                    {% csrf_token %}
                     <div class="form-group">
                         <label for="folderId">Google Drive Folder ID:</label>
                         <input 
@@ -310,6 +326,7 @@
                             id="folderId" 
                             name="folder_id" 
                             placeholder="Enter folder ID (e.g., 1aBcDeFgHiJkLmNoPqRsTuVwXyZ)"
+                            value="{{ folder_id }}"
                             required
                         >
                     </div>
@@ -506,6 +523,27 @@
             };
             return text.replace(/[&<>"']/g, m => map[m]);
         }
+
+        // Check for OAuth success message
+        window.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('auth') === 'success') {
+                const successBox = document.createElement('div');
+                successBox.style.cssText = 'background: #d4edda; color: #155724; padding: 15px; margin: 20px; border-radius: 8px; text-align: center; font-weight: 600;';
+                successBox.innerHTML = '✅ Successfully authenticated with Google Drive!';
+                document.querySelector('.content').insertBefore(successBox, document.querySelector('.content').firstChild);
+                
+                // Remove the auth parameter from URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+                
+                // Auto-hide after 5 seconds
+                setTimeout(() => {
+                    successBox.style.transition = 'opacity 0.5s';
+                    successBox.style.opacity = '0';
+                    setTimeout(() => successBox.remove(), 500);
+                }, 5000);
+            }
+        });
     </script>
 </body>
 </html>

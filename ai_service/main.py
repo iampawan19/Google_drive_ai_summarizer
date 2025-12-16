@@ -6,6 +6,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from .drive_client import GoogleDriveClient
 from .parsers import extract_text_from_file
