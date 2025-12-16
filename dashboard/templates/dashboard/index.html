@@ -271,6 +271,21 @@
             line-height: 1.6;
         }
         
+        .file-link {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .file-link:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+        
         .info-box {
             background: #d1ecf1;
             border-left: 4px solid #0c5460;
@@ -365,9 +380,14 @@
             <div class="results-section" id="resultsSection">
                 <div class="results-header">
                     <h2>📊 Summary Results</h2>
-                    <button class="btn btn-secondary" id="downloadBtn">
-                        📥 Download CSV
-                    </button>
+                    <div>
+                        <button class="btn btn-secondary" id="downloadCsvBtn">
+                            📥 Download CSV
+                        </button>
+                        <button class="btn btn-secondary" id="downloadPdfBtn" style="background: #dc3545; margin-left: 10px;">
+                            📄 Download PDF
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="stats">
@@ -391,6 +411,7 @@
                             <th>File Name</th>
                             <th>Type</th>
                             <th>Summary</th>
+                            <th>File Link</th>
                             <th>Status</th>
                         </tr>
                     </thead>
@@ -478,10 +499,15 @@
             
             files.forEach(file => {
                 const row = document.createElement('tr');
+                const fileLink = file.url ? 
+                    `<a href="${escapeHtml(file.url)}" target="_blank" style="color: #667eea; text-decoration: none; font-weight: 600;">🔗 Open in Drive</a>` : 
+                    '<span style="color: #999;">N/A</span>';
+                
                 row.innerHTML = `
                     <td><strong>${escapeHtml(file.name)}</strong></td>
                     <td>${escapeHtml(file.type.split('/').pop())}</td>
                     <td class="summary-cell">${escapeHtml(file.summary)}</td>
+                    <td style="text-align: center;">${fileLink}</td>
                     <td>
                         <span class="status-badge status-${file.status}">
                             ${file.status === 'success' ? '✓ Success' : '✗ Error'}
@@ -494,8 +520,12 @@
             resultsSection.classList.add('active');
         }
         
-        downloadBtn.addEventListener('click', () => {
+        document.getElementById('downloadCsvBtn').addEventListener('click', () => {
             window.location.href = '/download-csv/';
+        });
+        
+        document.getElementById('downloadPdfBtn').addEventListener('click', () => {
+            window.location.href = '/download-pdf/';
         });
         
         function getCookie(name) {

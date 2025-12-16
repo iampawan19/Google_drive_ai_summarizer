@@ -11,6 +11,7 @@ urlpatterns = [
     path('', views.index, name='index'),
     path('summarize/', views.summarize, name='summarize'),
     path('download-csv/', views.download_csv, name='download_csv'),
+    path('download-pdf/', views.download_pdf, name='download_pdf'),
     path('oauth/authorize/', views.oauth_authorize, name='oauth_authorize'),
     path('oauth/callback/', views.oauth_callback, name='oauth_callback'),
 ]

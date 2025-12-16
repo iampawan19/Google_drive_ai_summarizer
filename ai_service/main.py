@@ -78,6 +78,7 @@ async def summarize_files(request: SummarizeRequest):
                 summary = summarize_text(text, file_info['name'])
                 
                 results.append({
+                    'id': file_info['id'],
                     'name': file_info['name'],
                     'type': file_info.get('mimeType', ''),
                     'size': file_info.get('size', 'N/A'),
@@ -91,6 +92,7 @@ async def summarize_files(request: SummarizeRequest):
                     
             except Exception as e:
                 results.append({
+                    'id': file_info.get('id', ''),
                     'name': file_info['name'],
                     'type': file_info.get('mimeType', ''),
                     'size': file_info.get('size', 'N/A'),

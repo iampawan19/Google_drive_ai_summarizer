@@ -11,8 +11,14 @@ import requests
 import csv
 import json
 import os
-from io import StringIO
+from io import StringIO, BytesIO
 import sys
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.lib.units import inch
+from datetime import datetime
 
 # Add ai_service to path
 sys.path.append(os.path.join(settings.BASE_DIR, 'ai_service'))
@@ -106,7 +112,12 @@ def summarize(request):
         if response.status_code == 200:
             result = response.json()
             
-            # Store results in session for CSV download
+            # Add Google Drive URLs to each file
+            for file_data in result.get('files', []):
+                if 'id' in file_data:
+                    file_data['url'] = f"https://drive.google.com/file/d/{file_data['id']}/view"
+            
+            # Store results in session for CSV/PDF download
             request.session['last_results'] = result
             
             return JsonResponse(result)
@@ -150,7 +161,7 @@ def download_csv(request):
         writer = csv.writer(output)
         
         # Write header
-        writer.writerow(['File Name', 'Type', 'Size', 'Summary', 'Status'])
+        writer.writerow(['File Name', 'Type', 'Size', 'Summary', 'File URL', 'Status'])
         
         # Write data rows
         for file_data in results.get('files', []):
@@ -159,6 +170,7 @@ def download_csv(request):
                 file_data.get('type', ''),
                 file_data.get('size', ''),
                 file_data.get('summary', ''),
+                file_data.get('url', ''),
                 file_data.get('status', '')
             ])
         
@@ -171,5 +183,143 @@ def download_csv(request):
     except Exception as e:
         return HttpResponse(
             f'Error generating CSV: {str(e)}',
+            status=500
+        )
+
+
+@require_http_methods(["GET"])
+def download_pdf(request):
+    """
+    Download results as PDF file
+    Uses data stored in session from last summarize request
+    """
+    try:
+        # Get results from session
+        results = request.session.get('last_results')
+        
+        if not results:
+            return HttpResponse(
+                'No results available. Please run a summarization first.',
+                status=400
+            )
+        
+        # Create PDF in memory
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        # Container for PDF elements
+        elements = []
+        
+        # Styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#667eea'),
+            spaceAfter=30,
+            alignment=1  # Center
+        )
+        heading_style = styles['Heading2']
+        normal_style = styles['Normal']
+        
+        # Title
+        elements.append(Paragraph('Google Drive AI Summarizer Report', title_style))
+        elements.append(Paragraph(f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}', normal_style))
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Summary statistics
+        files = results.get('files', [])
+        total = len(files)
+        successful = len([f for f in files if f.get('status') == 'success'])
+        errors = len([f for f in files if f.get('status') == 'error'])
+        
+        stats_data = [
+            ['Total Files', 'Successful', 'Errors'],
+            [str(total), str(successful), str(errors)]
+        ]
+        
+        stats_table = Table(stats_data, colWidths=[2*inch, 2*inch, 2*inch])
+        stats_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#667eea')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('TOPPADDING', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+        ]))
+        
+        elements.append(stats_table)
+        elements.append(Spacer(1, 0.4*inch))
+        
+        # Files section
+        elements.append(Paragraph('File Summaries', heading_style))
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Process each file
+        for idx, file_data in enumerate(files, 1):
+            # File header
+            file_name = file_data.get('name', 'Unknown')
+            file_type = file_data.get('type', '').split('/')[-1]
+            status = file_data.get('status', 'unknown')
+            
+            # Create file info paragraph
+            file_header = f"<b>{idx}. {file_name}</b> ({file_type})"
+            elements.append(Paragraph(file_header, normal_style))
+            elements.append(Spacer(1, 0.1*inch))
+            
+            # Status
+            status_color = '#155724' if status == 'success' else '#721c24'
+            status_text = f'<font color="{status_color}"><b>Status:</b> {status.upper()}</font>'
+            elements.append(Paragraph(status_text, normal_style))
+            elements.append(Spacer(1, 0.05*inch))
+            
+            # File URL (if available)
+            if 'url' in file_data:
+                url_text = f'<b>Link:</b> <link href="{file_data["url"]}" color="blue">{file_data["url"]}</link>'
+                elements.append(Paragraph(url_text, normal_style))
+                elements.append(Spacer(1, 0.05*inch))
+            
+            # Summary
+            summary = file_data.get('summary', 'No summary available')
+            # Wrap text to prevent overflow
+            summary_style = ParagraphStyle(
+                'Summary',
+                parent=normal_style,
+                fontSize=9,
+                leading=12,
+                leftIndent=20,
+                rightIndent=20,
+                spaceAfter=10
+            )
+            elements.append(Paragraph(f'<b>Summary:</b>', normal_style))
+            elements.append(Paragraph(summary, summary_style))
+            elements.append(Spacer(1, 0.2*inch))
+            
+            # Add page break after every 3 files for better readability
+            if idx % 3 == 0 and idx < len(files):
+                elements.append(PageBreak())
+        
+        # Build PDF
+        doc.build(elements)
+        
+        # Get PDF from buffer
+        pdf_data = buffer.getvalue()
+        buffer.close()
+        
+        # Create response
+        response = HttpResponse(pdf_data, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="summaries_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf"'
+        
+        return response
+        
+    except Exception as e:
+        return HttpResponse(
+            f'Error generating PDF: {str(e)}',
             status=500
         )
